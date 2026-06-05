@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import authRoutes from "./routes/auth";
 
 dotenv.config();
 
@@ -15,6 +16,8 @@ app.get("/health", (_req, res) => {
     message: "wenzong-api is running",
   });
 });
+
+app.use("/api/auth", authRoutes);
 
 const PORT = process.env.PORT || 3000;
 
