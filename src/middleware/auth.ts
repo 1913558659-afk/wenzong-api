@@ -31,7 +31,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     next();
   } catch {
     return res.status(401).json({
-      message: "登录已失效，请重新登录",
+      message: "未登录或登录已失效",
     });
   }
 }
@@ -41,7 +41,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 
   if (!user || user.role !== "admin") {
     return res.status(403).json({
-      message: "需要管理员权限",
+      message: "无管理员权限",
     });
   }
 

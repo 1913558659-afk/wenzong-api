@@ -10,6 +10,20 @@ const questionInclude = {
   chapter: true,
 };
 
+const requiredQuestionFields = [
+  "questionCode",
+  "subjectCode",
+  "subjectName",
+  "chapterCode",
+  "chapterTitle",
+  "stem",
+  "optionA",
+  "optionB",
+  "optionC",
+  "optionD",
+  "correctAnswer",
+];
+
 function parsePage(value: unknown) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
@@ -21,21 +35,115 @@ function parseLimit(value: unknown) {
   return Math.min(limit, 100);
 }
 
-function getQuestionData(body: any) {
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getMissingFields(body: any) {
+  return requiredQuestionFields.filter((field) => {
+    const value = body[field];
+    return typeof value !== "string" || !value.trim();
+  });
+}
+
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : value;
+}
+
+function normalizeTags(
+  value: unknown
+): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  if (value === undefined || value === null || value === "") {
+    return Prisma.JsonNull;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) return Prisma.JsonNull;
+
+    try {
+      return JSON.parse(trimmed) as Prisma.InputJsonValue;
+    } catch {
+      return trimmed.includes(",")
+        ? trimmed.split(",").map((tag) => tag.trim()).filter(Boolean)
+        : [trimmed];
+    }
+  }
+
+  return value as Prisma.InputJsonValue;
+}
+
+async function findQuestionByIdOrCode(id: string) {
+  return (
+    (await prisma.question.findUnique({
+      where: { id },
+      include: questionInclude,
+    })) ||
+    (await prisma.question.findUnique({
+      where: { questionCode: id },
+      include: questionInclude,
+    }))
+  );
+}
+
+async function upsertSubjectAndChapter(body: any, fallback?: {
+  subject: { code: string; name: string };
+  chapter: { code: string | null; title: string } | null;
+}) {
+  const subjectCode = String(
+    normalizeText(body.subjectCode ?? fallback?.subject.code)
+  );
+  const subjectName = String(
+    normalizeText(body.subjectName ?? fallback?.subject.name)
+  );
+  const chapterCode = String(
+    normalizeText(body.chapterCode ?? fallback?.chapter?.code)
+  );
+  const chapterTitle = String(
+    normalizeText(body.chapterTitle ?? fallback?.chapter?.title)
+  );
+
+  const subject = await prisma.subject.upsert({
+    where: {
+      code: subjectCode,
+    },
+    update: {
+      name: subjectName,
+    },
+    create: {
+      code: subjectCode,
+      name: subjectName,
+    },
+  });
+
+  const existingChapter = await prisma.chapter.findFirst({
+    where: {
+      subjectId: subject.id,
+      code: chapterCode,
+    },
+  });
+
+  const chapter = existingChapter
+    ? await prisma.chapter.update({
+        where: {
+          id: existingChapter.id,
+        },
+        data: {
+          title: chapterTitle,
+        },
+      })
+    : await prisma.chapter.create({
+        data: {
+          subjectId: subject.id,
+          code: chapterCode,
+          title: chapterTitle,
+        },
+      });
+
   return {
-    subjectId: body.subjectId,
-    chapterId: body.chapterId ?? null,
-    questionCode: body.questionCode,
-    stem: body.stem,
-    optionA: body.optionA,
-    optionB: body.optionB,
-    optionC: body.optionC,
-    optionD: body.optionD,
-    correctAnswer: body.correctAnswer,
-    explanation: body.explanation ?? null,
-    difficulty: body.difficulty ?? null,
-    tags: body.tags ?? Prisma.JsonNull,
-    isActive: body.isActive ?? true,
+    subject,
+    chapter,
   };
 }
 
@@ -152,36 +260,66 @@ router.get("/subjects", async (_req, res) => {
 
 router.post("/admin/questions", authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const data = getQuestionData(req.body);
+    const missingFields = getMissingFields(req.body);
 
-    if (
-      !data.subjectId ||
-      !data.questionCode ||
-      !data.stem ||
-      !data.optionA ||
-      !data.optionB ||
-      !data.optionC ||
-      !data.optionD ||
-      !data.correctAnswer
-    ) {
+    if (missingFields.length > 0) {
       return res.status(400).json({
-        message: "缺少必要的题目参数",
+        message: "字段缺失",
+        missingFields,
       });
     }
 
-    const question = await prisma.question.create({
-      data,
+    const { subject, chapter } = await upsertSubjectAndChapter(req.body);
+    const existingQuestion = await prisma.question.findUnique({
+      where: {
+        questionCode: String(normalizeText(req.body.questionCode)),
+      },
+    });
+
+    const question = await prisma.question.upsert({
+      where: {
+        questionCode: String(normalizeText(req.body.questionCode)),
+      },
+      update: {
+        subjectId: subject.id,
+        chapterId: chapter.id,
+        stem: String(normalizeText(req.body.stem)),
+        optionA: String(normalizeText(req.body.optionA)),
+        optionB: String(normalizeText(req.body.optionB)),
+        optionC: String(normalizeText(req.body.optionC)),
+        optionD: String(normalizeText(req.body.optionD)),
+        correctAnswer: String(normalizeText(req.body.correctAnswer)),
+        explanation: req.body.explanation ?? null,
+        difficulty: req.body.difficulty ?? null,
+        tags: normalizeTags(req.body.tags),
+        isActive: req.body.isActive ?? true,
+      },
+      create: {
+        questionCode: String(normalizeText(req.body.questionCode)),
+        subjectId: subject.id,
+        chapterId: chapter.id,
+        stem: String(normalizeText(req.body.stem)),
+        optionA: String(normalizeText(req.body.optionA)),
+        optionB: String(normalizeText(req.body.optionB)),
+        optionC: String(normalizeText(req.body.optionC)),
+        optionD: String(normalizeText(req.body.optionD)),
+        correctAnswer: String(normalizeText(req.body.correctAnswer)),
+        explanation: req.body.explanation ?? null,
+        difficulty: req.body.difficulty ?? null,
+        tags: normalizeTags(req.body.tags),
+      },
       include: questionInclude,
     });
 
-    return res.status(201).json({
-      message: "题目已创建",
+    return res.status(existingQuestion ? 200 : 201).json({
+      message: "题目保存成功",
       question,
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({
-      message: "创建题目失败",
+      message: "服务器错误",
+      error: getErrorMessage(error),
     });
   }
 });
@@ -189,9 +327,7 @@ router.post("/admin/questions", authMiddleware, requireAdmin, async (req, res) =
 router.put("/admin/questions/:id", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const id = String(req.params.id);
-    const existing =
-      (await prisma.question.findUnique({ where: { id } })) ||
-      (await prisma.question.findUnique({ where: { questionCode: id } }));
+    const existing = await findQuestionByIdOrCode(id);
 
     if (!existing) {
       return res.status(404).json({
@@ -199,25 +335,104 @@ router.put("/admin/questions/:id", authMiddleware, requireAdmin, async (req, res
       });
     }
 
+    const subjectCode = normalizeText(req.body.subjectCode ?? existing.subject.code);
+    const subjectName = normalizeText(req.body.subjectName ?? existing.subject.name);
+    const chapterCode = normalizeText(req.body.chapterCode ?? existing.chapter?.code);
+    const chapterTitle = normalizeText(req.body.chapterTitle ?? existing.chapter?.title);
+
+    const missingFields = [];
+    if (typeof subjectCode !== "string" || !subjectCode) {
+      missingFields.push("subjectCode");
+    }
+    if (typeof subjectName !== "string" || !subjectName) {
+      missingFields.push("subjectName");
+    }
+    if (typeof chapterCode !== "string" || !chapterCode) {
+      missingFields.push("chapterCode");
+    }
+    if (typeof chapterTitle !== "string" || !chapterTitle) {
+      missingFields.push("chapterTitle");
+    }
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        message: "字段缺失",
+        missingFields,
+      });
+    }
+
+    const { subject, chapter } = await upsertSubjectAndChapter(
+      {
+        subjectCode,
+        subjectName,
+        chapterCode,
+        chapterTitle,
+      },
+      {
+        subject: existing.subject,
+        chapter: existing.chapter,
+      }
+    );
+
     const question = await prisma.question.update({
       where: {
         id: existing.id,
       },
-      data: getQuestionData({
-        ...existing,
-        ...req.body,
-      }),
+      data: {
+        subjectId: subject.id,
+        chapterId: chapter.id,
+        questionCode:
+          req.body.questionCode === undefined
+            ? existing.questionCode
+            : String(normalizeText(req.body.questionCode)),
+        stem:
+          req.body.stem === undefined
+            ? existing.stem
+            : String(normalizeText(req.body.stem)),
+        optionA:
+          req.body.optionA === undefined
+            ? existing.optionA
+            : String(normalizeText(req.body.optionA)),
+        optionB:
+          req.body.optionB === undefined
+            ? existing.optionB
+            : String(normalizeText(req.body.optionB)),
+        optionC:
+          req.body.optionC === undefined
+            ? existing.optionC
+            : String(normalizeText(req.body.optionC)),
+        optionD:
+          req.body.optionD === undefined
+            ? existing.optionD
+            : String(normalizeText(req.body.optionD)),
+        correctAnswer:
+          req.body.correctAnswer === undefined
+            ? existing.correctAnswer
+            : String(normalizeText(req.body.correctAnswer)),
+        explanation:
+          req.body.explanation === undefined
+            ? existing.explanation
+            : req.body.explanation,
+        difficulty:
+          req.body.difficulty === undefined ? existing.difficulty : req.body.difficulty,
+        tags:
+          req.body.tags === undefined
+            ? existing.tags ?? Prisma.JsonNull
+            : normalizeTags(req.body.tags),
+        isActive: req.body.isActive ?? existing.isActive,
+      },
       include: questionInclude,
     });
 
     return res.json({
-      message: "题目已更新",
+      message: "题目更新成功",
       question,
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({
-      message: "更新题目失败",
+      message: "服务器错误",
+      error: getErrorMessage(error),
     });
   }
 });
@@ -225,9 +440,7 @@ router.put("/admin/questions/:id", authMiddleware, requireAdmin, async (req, res
 router.delete("/admin/questions/:id", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const id = String(req.params.id);
-    const existing =
-      (await prisma.question.findUnique({ where: { id } })) ||
-      (await prisma.question.findUnique({ where: { questionCode: id } }));
+    const existing = await findQuestionByIdOrCode(id);
 
     if (!existing) {
       return res.status(404).json({
@@ -235,24 +448,23 @@ router.delete("/admin/questions/:id", authMiddleware, requireAdmin, async (req, 
       });
     }
 
-    const question = await prisma.question.update({
+    await prisma.question.update({
       where: {
         id: existing.id,
       },
       data: {
         isActive: false,
       },
-      include: questionInclude,
     });
 
     return res.json({
       message: "题目已删除",
-      question,
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({
-      message: "删除题目失败",
+      message: "服务器错误",
+      error: getErrorMessage(error),
     });
   }
 });
