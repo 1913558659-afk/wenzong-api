@@ -10,7 +10,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "seed:questions": "ts-node --transpile-only scripts/seedQuestions.ts",
-    "import:questions": "ts-node --transpile-only scripts/importQuestionsFromJson.ts"
+    "import:questions": "ts-node --transpile-only scripts/importQuestionsFromJson.ts",
+    "create-admin": "ts-node --transpile-only scripts/createAdmin.ts"
   },
   "keywords": [],
   "author": "",
