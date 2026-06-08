@@ -2,6 +2,11 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { authMiddleware, requireAdmin } from "../middleware/auth";
+import {
+  parseQuestionImportText,
+  QuestionImportFormat,
+  ParsedImportQuestion,
+} from "../utils/questionImportParser";
 
 const router = Router();
 
@@ -147,6 +152,51 @@ async function upsertSubjectAndChapter(body: any, fallback?: {
   };
 }
 
+async function saveImportedQuestion(item: ParsedImportQuestion) {
+  const { subject, chapter } = await upsertSubjectAndChapter(item);
+
+  return prisma.question.upsert({
+    where: {
+      questionCode: item.questionCode,
+    },
+    update: {
+      subjectId: subject.id,
+      chapterId: chapter.id,
+      stem: item.stem,
+      optionA: item.optionA,
+      optionB: item.optionB,
+      optionC: item.optionC,
+      optionD: item.optionD,
+      correctAnswer: item.correctAnswer,
+      explanation: item.explanation,
+      difficulty: item.difficulty,
+      tags: item.tags,
+      isActive: true,
+    },
+    create: {
+      questionCode: item.questionCode,
+      subjectId: subject.id,
+      chapterId: chapter.id,
+      stem: item.stem,
+      optionA: item.optionA,
+      optionB: item.optionB,
+      optionC: item.optionC,
+      optionD: item.optionD,
+      correctAnswer: item.correctAnswer,
+      explanation: item.explanation,
+      difficulty: item.difficulty,
+      tags: item.tags,
+    },
+  });
+}
+
+function getImportPayload(body: any) {
+  return {
+    format: (body.format || "auto") as QuestionImportFormat,
+    text: typeof body.text === "string" ? body.text : "",
+  };
+}
+
 router.get("/questions", async (req, res) => {
   try {
     const page = parsePage(req.query.page);
@@ -257,6 +307,70 @@ router.get("/subjects", async (_req, res) => {
     });
   }
 });
+
+router.post(
+  "/admin/questions/import/preview",
+  authMiddleware,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { format, text } = getImportPayload(req.body);
+      const result = parseQuestionImportText(text, format);
+
+      return res.json({
+        message: "解析完成",
+        ...result,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        message: "服务器错误",
+        error: getErrorMessage(error),
+      });
+    }
+  }
+);
+
+router.post(
+  "/admin/questions/import/confirm",
+  authMiddleware,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { format, text } = getImportPayload(req.body);
+      const result = parseQuestionImportText(text, format);
+      const errors = [...result.errors];
+      let importedCount = 0;
+
+      for (const [index, question] of result.questions.entries()) {
+        try {
+          await saveImportedQuestion(question);
+          importedCount += 1;
+        } catch (error) {
+          console.error(error);
+          errors.push({
+            index,
+            message: getErrorMessage(error),
+          });
+        }
+      }
+
+      return res.json({
+        message: "批量导入完成",
+        total: result.total,
+        importedCount,
+        failedCount: result.total - importedCount,
+        errors,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        message: "服务器错误",
+        error: getErrorMessage(error),
+      });
+    }
+  }
+);
 
 router.post("/admin/questions", authMiddleware, requireAdmin, async (req, res) => {
   try {
