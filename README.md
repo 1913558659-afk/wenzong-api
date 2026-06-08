@@ -78,3 +78,9 @@ Seed example question data:
 ```bash
 npm run seed:questions
 ```
+
+Import question bank JSON from `data/questions-export.json`:
+
+```bash
+npm run import:questions
+```
