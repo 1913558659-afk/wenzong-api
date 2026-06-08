@@ -54,3 +54,27 @@ GET /health
 ```
 
 Returns a JSON response when the API is running.
+
+## Question Bank API
+
+Public endpoints:
+
+```http
+GET /api/questions
+GET /api/questions/:id
+GET /api/subjects
+```
+
+Admin endpoints require a JWT for a user with `role=admin`:
+
+```http
+POST /api/admin/questions
+PUT /api/admin/questions/:id
+DELETE /api/admin/questions/:id
+```
+
+Seed example question data:
+
+```bash
+npm run seed:questions
+```

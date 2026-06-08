@@ -35,3 +35,15 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     });
   }
 }
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user as AuthUser | undefined;
+
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({
+      message: "需要管理员权限",
+    });
+  }
+
+  next();
+}

@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth";
 import progressRoutes from "./routes/progress";
+import questionRoutes from "./routes/questions";
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/progress", progressRoutes);
+app.use("/api", questionRoutes);
 
 const PORT = process.env.PORT || 3000;
 
