@@ -174,7 +174,8 @@ function parseJson(text: string) {
 
 function parseMarkdown(text: string) {
   return text
-    .split(/\n---+\n|^---+\n|\n---+$/m)
+    .replace(/\r\n/g, "\n")
+    .split(/^\s*---+\s*$/gm)
     .map((block) => block.trim())
     .filter(Boolean)
     .map((block) => {
