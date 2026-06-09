@@ -2,8 +2,8 @@ import "dotenv/config";
 import bcrypt from "bcrypt";
 import { prisma } from "../src/lib/prisma";
 
-const ADMIN_EMAIL = "admin@example.com";
-const ADMIN_PASSWORD = "admin123456";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123456";
 
 async function main() {
   const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
@@ -42,7 +42,6 @@ async function main() {
 
   console.log("Admin user is ready");
   console.log(`email: ${ADMIN_EMAIL}`);
-  console.log(`password: ${ADMIN_PASSWORD}`);
   console.log(`role: ${user.role}`);
 }
 
