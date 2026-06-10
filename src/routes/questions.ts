@@ -29,6 +29,26 @@ const requiredQuestionFields = [
   "correctAnswer",
 ];
 
+function normalizeQuestionType(value: unknown) {
+  const text = typeof value === "string" ? value.trim().toLowerCase() : "";
+
+  if (["fill_blank", "fill-blank", "blank", "填空题", "填空"].includes(text)) {
+    return "fill_blank";
+  }
+
+  return "single_choice";
+}
+
+function withQuestionType<T extends { questionType?: string | null }>(question: T) {
+  const questionType = question.questionType || "single_choice";
+
+  return {
+    ...question,
+    questionType,
+    type: questionType,
+  };
+}
+
 function parsePage(value: unknown) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
@@ -45,7 +65,15 @@ function getErrorMessage(error: unknown) {
 }
 
 function getMissingFields(body: any) {
-  return requiredQuestionFields.filter((field) => {
+  const questionType = normalizeQuestionType(body.questionType ?? body.type);
+  const fields =
+    questionType === "fill_blank"
+      ? requiredQuestionFields.filter(
+          (field) => !["optionA", "optionB", "optionC", "optionD"].includes(field)
+        )
+      : requiredQuestionFields;
+
+  return fields.filter((field) => {
     const value = body[field];
     return typeof value !== "string" || !value.trim();
   });
@@ -171,10 +199,12 @@ async function saveImportedQuestion(item: ParsedImportQuestion) {
       explanation: item.explanation,
       difficulty: item.difficulty,
       tags: item.tags,
+      questionType: item.questionType,
       isActive: true,
     },
     create: {
       questionCode: item.questionCode,
+      questionType: item.questionType,
       subjectId: subject.id,
       chapterId: chapter.id,
       stem: item.stem,
@@ -235,7 +265,7 @@ router.get("/questions", async (req, res) => {
     ]);
 
     return res.json({
-      questions,
+      questions: questions.map(withQuestionType),
       pagination: {
         page,
         limit,
@@ -272,7 +302,7 @@ router.get("/questions/:id", async (req, res) => {
     }
 
     return res.json({
-      question,
+      question: withQuestionType(question),
     });
   } catch (error) {
     console.error(error);
@@ -397,11 +427,16 @@ router.post("/admin/questions", authMiddleware, requireAdmin, async (req, res) =
       update: {
         subjectId: subject.id,
         chapterId: chapter.id,
+        questionType: normalizeQuestionType(req.body.questionType ?? req.body.type),
         stem: String(normalizeText(req.body.stem)),
-        optionA: String(normalizeText(req.body.optionA)),
-        optionB: String(normalizeText(req.body.optionB)),
-        optionC: String(normalizeText(req.body.optionC)),
-        optionD: String(normalizeText(req.body.optionD)),
+        optionA:
+          req.body.optionA === undefined ? null : String(normalizeText(req.body.optionA)),
+        optionB:
+          req.body.optionB === undefined ? null : String(normalizeText(req.body.optionB)),
+        optionC:
+          req.body.optionC === undefined ? null : String(normalizeText(req.body.optionC)),
+        optionD:
+          req.body.optionD === undefined ? null : String(normalizeText(req.body.optionD)),
         correctAnswer: String(normalizeText(req.body.correctAnswer)),
         explanation: req.body.explanation ?? null,
         difficulty: req.body.difficulty ?? null,
@@ -410,13 +445,18 @@ router.post("/admin/questions", authMiddleware, requireAdmin, async (req, res) =
       },
       create: {
         questionCode: String(normalizeText(req.body.questionCode)),
+        questionType: normalizeQuestionType(req.body.questionType ?? req.body.type),
         subjectId: subject.id,
         chapterId: chapter.id,
         stem: String(normalizeText(req.body.stem)),
-        optionA: String(normalizeText(req.body.optionA)),
-        optionB: String(normalizeText(req.body.optionB)),
-        optionC: String(normalizeText(req.body.optionC)),
-        optionD: String(normalizeText(req.body.optionD)),
+        optionA:
+          req.body.optionA === undefined ? null : String(normalizeText(req.body.optionA)),
+        optionB:
+          req.body.optionB === undefined ? null : String(normalizeText(req.body.optionB)),
+        optionC:
+          req.body.optionC === undefined ? null : String(normalizeText(req.body.optionC)),
+        optionD:
+          req.body.optionD === undefined ? null : String(normalizeText(req.body.optionD)),
         correctAnswer: String(normalizeText(req.body.correctAnswer)),
         explanation: req.body.explanation ?? null,
         difficulty: req.body.difficulty ?? null,
@@ -427,7 +467,7 @@ router.post("/admin/questions", authMiddleware, requireAdmin, async (req, res) =
 
     return res.status(existingQuestion ? 200 : 201).json({
       message: "题目保存成功",
-      question,
+      question: withQuestionType(question),
     });
   } catch (error) {
     console.error(error);
@@ -495,6 +535,10 @@ router.put("/admin/questions/:id", authMiddleware, requireAdmin, async (req, res
       data: {
         subjectId: subject.id,
         chapterId: chapter.id,
+        questionType:
+          req.body.questionType === undefined && req.body.type === undefined
+            ? existing.questionType
+            : normalizeQuestionType(req.body.questionType ?? req.body.type),
         questionCode:
           req.body.questionCode === undefined
             ? existing.questionCode
@@ -540,7 +584,7 @@ router.put("/admin/questions/:id", authMiddleware, requireAdmin, async (req, res
 
     return res.json({
       message: "题目更新成功",
-      question,
+      question: withQuestionType(question),
     });
   } catch (error) {
     console.error(error);

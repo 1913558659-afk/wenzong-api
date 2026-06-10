@@ -2,15 +2,17 @@ export type QuestionImportFormat = "auto" | "json" | "markdown" | "csv";
 
 export type ParsedImportQuestion = {
   questionCode: string;
+  questionType: "single_choice" | "fill_blank";
+  type: "single_choice" | "fill_blank";
   subjectCode: string;
   subjectName: string;
   chapterCode: string;
   chapterTitle: string;
   stem: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
   correctAnswer: string;
   explanation: string | null;
   difficulty: string;
@@ -48,17 +50,18 @@ const chapterCodeMap: Record<string, string> = {
   明清时期: "ming-qing",
 };
 
-const requiredFields = [
-  "stem",
-  "optionA",
-  "optionB",
-  "optionC",
-  "optionD",
-  "correctAnswer",
-];
-
 function getText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeQuestionType(value: unknown) {
+  const text = getText(value).toLowerCase();
+
+  if (["fill_blank", "fill-blank", "blank", "填空题", "填空"].includes(text)) {
+    return "fill_blank" as const;
+  }
+
+  return "single_choice" as const;
 }
 
 function slugify(value: string) {
@@ -117,25 +120,36 @@ function normalizeQuestion(
     getText(raw.subjectCode) || subjectCodeMap[subjectName] || slugify(subjectName);
   const chapterTitle = getText(raw.chapterTitle) || "默认章节";
   const chapterCode = getText(raw.chapterCode) || slugify(chapterTitle);
-  const correctAnswer = getText(raw.correctAnswer).toUpperCase();
+  const questionType = normalizeQuestionType(raw.questionType ?? raw.type);
+  const correctAnswer =
+    questionType === "single_choice"
+      ? getText(raw.correctAnswer).toUpperCase()
+      : getText(raw.correctAnswer);
 
   const normalized: ParsedImportQuestion = {
     questionCode:
       getText(raw.questionCode) || `${subjectCode}-${chapterCode}-${Date.now()}-${index + 1}`,
+    questionType,
+    type: questionType,
     subjectCode,
     subjectName,
     chapterCode,
     chapterTitle,
     stem: getText(raw.stem),
-    optionA: getText(raw.optionA),
-    optionB: getText(raw.optionB),
-    optionC: getText(raw.optionC),
-    optionD: getText(raw.optionD),
+    optionA: getText(raw.optionA) || null,
+    optionB: getText(raw.optionB) || null,
+    optionC: getText(raw.optionC) || null,
+    optionD: getText(raw.optionD) || null,
     correctAnswer,
     explanation: getText(raw.explanation) || null,
     difficulty: getText(raw.difficulty) || "medium",
     tags: normalizeTags(raw.tags),
   };
+
+  const requiredFields =
+    normalized.questionType === "fill_blank"
+      ? ["stem", "correctAnswer"]
+      : ["stem", "optionA", "optionB", "optionC", "optionD", "correctAnswer"];
 
   const missingFields = requiredFields.filter((field) => {
     const value = normalized[field as keyof ParsedImportQuestion];
@@ -151,7 +165,10 @@ function normalizeQuestion(
     };
   }
 
-  if (!["A", "B", "C", "D"].includes(normalized.correctAnswer)) {
+  if (
+    normalized.questionType === "single_choice" &&
+    !["A", "B", "C", "D"].includes(normalized.correctAnswer)
+  ) {
     return {
       error: {
         index,
@@ -195,7 +212,7 @@ function parseMarkdown(text: string) {
           continue;
         }
 
-        const fieldMatch = trimmed.match(/^(学科|学科代码|章节|章节代码|难度|标签|题干|答案|解析|题号|questionCode)[：:]\s*(.*)$/i);
+        const fieldMatch = trimmed.match(/^(学科|学科代码|章节|章节代码|题型|questionType|type|难度|标签|题干|答案|解析|题号|questionCode)[：:]\s*(.*)$/i);
         const optionMatch = trimmed.match(/^([A-D])[\.\、．:：]\s*(.*)$/i);
 
         if (fieldMatch) {
@@ -206,6 +223,9 @@ function parseMarkdown(text: string) {
           else if (key === "学科代码") raw.subjectCode = value;
           else if (key === "章节") raw.chapterTitle = value;
           else if (key === "章节代码") raw.chapterCode = value;
+          else if (key === "题型" || key === "questionType" || key === "type") {
+            raw.questionType = value;
+          }
           else if (key === "难度") raw.difficulty = value;
           else if (key === "标签") raw.tags = value;
           else if (key === "题干") {

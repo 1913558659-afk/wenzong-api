@@ -12,7 +12,8 @@
     "seed:questions": "ts-node --transpile-only scripts/seedQuestions.ts",
     "import:questions": "ts-node --transpile-only scripts/importQuestionsFromJson.ts",
     "create-admin": "ts-node --transpile-only scripts/createAdmin.ts",
-    "test:question-import-parser": "ts-node --transpile-only scripts/testQuestionImportParser.ts"
+    "test:question-import-parser": "ts-node --transpile-only scripts/testQuestionImportParser.ts",
+    "test:fill-blank-import-parser": "ts-node --transpile-only scripts/testFillBlankImportParser.ts"
   },
   "keywords": [],
   "author": "",

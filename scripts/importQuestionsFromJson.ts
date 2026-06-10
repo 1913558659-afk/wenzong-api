@@ -6,15 +6,17 @@ import { prisma } from "../src/lib/prisma";
 
 type ExportedQuestion = {
   questionCode: string;
+  questionType?: string | null;
+  type?: string | null;
   subjectCode: string;
   subjectName: string;
   chapterCode: string;
   chapterTitle: string;
   stem: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
+  optionA?: string | null;
+  optionB?: string | null;
+  optionC?: string | null;
+  optionD?: string | null;
   correctAnswer: string;
   explanation?: string | null;
   difficulty?: string | null;
@@ -33,6 +35,20 @@ function requireText(value: unknown, field: string, questionIndex: number) {
   }
 
   return value.trim();
+}
+
+function normalizeQuestionType(value: unknown) {
+  const text = typeof value === "string" ? value.trim().toLowerCase() : "";
+
+  if (["fill_blank", "fill-blank", "blank", "填空题", "填空"].includes(text)) {
+    return "fill_blank";
+  }
+
+  return "single_choice";
+}
+
+function optionalText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 async function main() {
@@ -56,6 +72,7 @@ async function main() {
     const subjectName = requireText(item.subjectName, "subjectName", index);
     const chapterCode = requireText(item.chapterCode, "chapterCode", index);
     const chapterTitle = requireText(item.chapterTitle, "chapterTitle", index);
+    const questionType = normalizeQuestionType(item.questionType ?? item.type);
 
     let subject = subjects.get(subjectCode);
 
@@ -124,11 +141,16 @@ async function main() {
       update: {
         subjectId: subject.id,
         chapterId: chapter.id,
+        questionType,
         stem: requireText(item.stem, "stem", index),
-        optionA: requireText(item.optionA, "optionA", index),
-        optionB: requireText(item.optionB, "optionB", index),
-        optionC: requireText(item.optionC, "optionC", index),
-        optionD: requireText(item.optionD, "optionD", index),
+        optionA:
+          questionType === "fill_blank" ? optionalText(item.optionA) : requireText(item.optionA, "optionA", index),
+        optionB:
+          questionType === "fill_blank" ? optionalText(item.optionB) : requireText(item.optionB, "optionB", index),
+        optionC:
+          questionType === "fill_blank" ? optionalText(item.optionC) : requireText(item.optionC, "optionC", index),
+        optionD:
+          questionType === "fill_blank" ? optionalText(item.optionD) : requireText(item.optionD, "optionD", index),
         correctAnswer: requireText(item.correctAnswer, "correctAnswer", index),
         explanation: item.explanation ?? null,
         difficulty: item.difficulty ?? null,
@@ -137,13 +159,18 @@ async function main() {
       },
       create: {
         questionCode,
+        questionType,
         subjectId: subject.id,
         chapterId: chapter.id,
         stem: requireText(item.stem, "stem", index),
-        optionA: requireText(item.optionA, "optionA", index),
-        optionB: requireText(item.optionB, "optionB", index),
-        optionC: requireText(item.optionC, "optionC", index),
-        optionD: requireText(item.optionD, "optionD", index),
+        optionA:
+          questionType === "fill_blank" ? optionalText(item.optionA) : requireText(item.optionA, "optionA", index),
+        optionB:
+          questionType === "fill_blank" ? optionalText(item.optionB) : requireText(item.optionB, "optionB", index),
+        optionC:
+          questionType === "fill_blank" ? optionalText(item.optionC) : requireText(item.optionC, "optionC", index),
+        optionD:
+          questionType === "fill_blank" ? optionalText(item.optionD) : requireText(item.optionD, "optionD", index),
         correctAnswer: requireText(item.correctAnswer, "correctAnswer", index),
         explanation: item.explanation ?? null,
         difficulty: item.difficulty ?? null,

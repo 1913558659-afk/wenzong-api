@@ -127,11 +127,12 @@ model Question {
   subjectId     String
   chapterId     String?
   questionCode  String   @unique
+  questionType  String   @default("single_choice")
   stem          String
-  optionA       String
-  optionB       String
-  optionC       String
-  optionD       String
+  optionA       String?
+  optionB       String?
+  optionC       String?
+  optionD       String?
   correctAnswer String
   explanation   String?
   difficulty    String?
@@ -146,5 +147,6 @@ model Question {
   @@index([subjectId])
   @@index([chapterId])
   @@index([isActive])
+  @@index([questionType])
   @@map("questions")
 }
