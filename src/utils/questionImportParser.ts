@@ -36,6 +36,8 @@ const subjectCodeMap: Record<string, string> = {
   历史: "history",
   政治: "politics",
   地理: "geography",
+  数学: "math",
+  英语: "english",
 };
 
 const chapterCodeMap: Record<string, string> = {
@@ -182,13 +184,19 @@ function parseMarkdown(text: string) {
       const raw: RawImportQuestion = {};
       const lines = block.split(/\r?\n/);
       let stemLines: string[] = [];
+      let explanationLines: string[] = [];
+      let activeMultilineField: "stem" | "explanation" | null = null;
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (!trimmed) {
+          if (activeMultilineField === "stem") stemLines.push("");
+          if (activeMultilineField === "explanation") explanationLines.push("");
+          continue;
+        }
 
-        const fieldMatch = trimmed.match(/^([^：:]+)[：:]\s*(.*)$/);
-        const optionMatch = trimmed.match(/^([A-D])[\.\、]\s*(.*)$/i);
+        const fieldMatch = trimmed.match(/^(学科|学科代码|章节|章节代码|难度|标签|题干|答案|解析|题号|questionCode)[：:]\s*(.*)$/i);
+        const optionMatch = trimmed.match(/^([A-D])[\.\、．:：]\s*(.*)$/i);
 
         if (fieldMatch) {
           const [, label, value] = fieldMatch;
@@ -202,9 +210,14 @@ function parseMarkdown(text: string) {
           else if (key === "标签") raw.tags = value;
           else if (key === "题干") {
             raw.stem = value;
-            stemLines = [value];
+            stemLines = value ? [value] : [];
+            activeMultilineField = "stem";
           } else if (key === "答案") raw.correctAnswer = value;
-          else if (key === "解析") raw.explanation = value;
+          else if (key === "解析") {
+            raw.explanation = value;
+            explanationLines = value ? [value] : [];
+            activeMultilineField = "explanation";
+          }
           else if (key === "题号" || key === "questionCode") raw.questionCode = value;
 
           continue;
@@ -213,12 +226,19 @@ function parseMarkdown(text: string) {
         if (optionMatch) {
           const [, option, value] = optionMatch;
           raw[`option${option.toUpperCase()}`] = value;
+          activeMultilineField = null;
           continue;
         }
 
-        if (stemLines.length > 0 && !raw.optionA) {
-          stemLines.push(trimmed);
+        if (activeMultilineField === "stem" && !raw.optionA) {
+          stemLines.push(line);
           raw.stem = stemLines.join("\n");
+          continue;
+        }
+
+        if (activeMultilineField === "explanation") {
+          explanationLines.push(line);
+          raw.explanation = explanationLines.join("\n");
         }
       }
 
